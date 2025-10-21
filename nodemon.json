@@ -1,0 +1,11 @@
+{
+  "watch": ["src"],
+  "ignore": [
+    "src/**/*.log",
+    "src/**/*.json",
+    "src/tmp/*",
+    ".env",
+    "node_modules"
+  ],
+  "ext": "ts,json"
+}

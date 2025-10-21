@@ -1,0 +1,51 @@
+{
+  "name": "agendoor-server",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "smoke": "node scripts/smoke.js",
+    "test:twilio": "ts-node src/testTwilio.ts",
+    "test:webhook": "curl -X POST http://localhost:3001/api/whatsapp/webhook -H 'Content-Type: application/x-www-form-urlencoded' -d 'From=whatsapp:+5517999999999&Body=Oi&ProfileName=Teste'"
+  },
+  "keywords": [
+    "agendoor",
+    "agendamento",
+    "backend"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Backend para o sistema Agendoor",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.17.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.5.2",
+    "@types/twilio": "^3.19.2",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.10",
+    "sharp": "^0.34.4",
+    "ts-node": "^10.9.2",
+    "twilio": "^5.10.3",
+    "typescript": "^5.9.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.17.1"
+  }
+}
