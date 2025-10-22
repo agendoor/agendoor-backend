@@ -1,113 +1,104 @@
 import { Request, Response } from 'express';
 import { authService } from './auth.service';
 import { AuthRequest } from '../../middleware/auth';
+import { admin } from '../../config/firebaseAdmin'; // Importa o Firebase Admin SDK
 
 export class AuthController {
   async register(req: Request, res: Response) {
     try {
-      const result = await authService.register(req.body);
+      const { idToken, ...userData } = req.body; // Recebe o idToken do Firebase e outros dados do usuário
+
+      if (!idToken) {
+        return res.status(400).json({ error: 'Firebase ID Token não fornecido para registro' });
+      }
+
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const firebaseUid = decodedToken.uid;
+
+      const result = await authService.register({ ...userData, firebaseUid });
       
       res.status(201).json({
         message: 'Cadastro realizado com sucesso',
         user: {
           id: result.user.id,
           fullName: result.user.fullName,
-          email: result.user.email
+          email: result.user.email,
+          firebaseUid: result.user.firebaseUid, // Inclui o firebaseUid no retorno
         },
         company: {
           id: result.company.id,
-          name: result.company.name
-        }
+          name: result.company.name,
+        },
+        token: idToken, // Retorna o idToken do Firebase para o frontend
       });
     } catch (error: any) {
-      console.error('Erro no cadastro:', error);
+      console.error('Erro no cadastro com Firebase:', error);
       
       if (error.message === 'Email já cadastrado') {
         return res.status(400).json({ error: error.message });
       }
       
-      res.status(500).json({ error: 'Erro ao realizar cadastro' });
+      res.status(500).json({ error: 'Erro ao realizar cadastro com Firebase' });
     }
   }
 
   async login(req: Request, res: Response) {
     try {
-      const { email, password } = req.body;
-      
-      if (!email || !password) {
-        return res.status(400).json({ error: 'Email e senha são obrigatórios' });
+      const { idToken } = req.body; // Recebe o idToken do Firebase
+
+      if (!idToken) {
+        return res.status(400).json({ error: 'Firebase ID Token não fornecido para login' });
       }
 
-      const result = await authService.login({ email, password });
-      
-      res.cookie('token', result.token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000
-      });
-      
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const firebaseUid = decodedToken.uid;
+
+      const user = await authService.getUserByFirebaseUid(firebaseUid); // Busca o usuário no DB local
+
+      if (!user) {
+        return res.status(401).json({ error: 'Usuário não encontrado no banco de dados local' });
+      }
+
       res.json({
         message: 'Login realizado com sucesso',
-        token: result.token,
-        user: result.user
+        token: idToken, // Retorna o idToken do Firebase
+        user: {
+          id: user.id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          firebaseUid: user.firebaseUid,
+          company: user.company ? { id: user.company.id, name: user.company.name } : undefined,
+        }
       });
     } catch (error: any) {
-      console.error('Erro no login:', error);
-      
-      if (error.message === 'Credenciais inválidas') {
-        return res.status(401).json({ error: error.message });
-      }
-      
-      res.status(500).json({ error: 'Erro ao realizar login' });
+      console.error('Erro no login com Firebase:', error);
+      res.status(401).json({ error: 'Firebase ID Token inválido ou expirado' });
     }
   }
 
-  async validateToken(req: AuthRequest, res: Response) {
-    try {
-      const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
-      
-      if (!token) {
-        return res.status(401).json({ error: 'Token não fornecido' });
-      }
-
-      const user = await authService.validateToken(token);
-      
-      res.json({ user });
-    } catch (error: any) {
-      console.error('Erro ao validar token:', error);
-      res.status(401).json({ error: 'Token inválido' });
-    }
-  }
-
+  // A rota de logout não é mais necessária no backend, pois o Firebase gerencia a sessão no frontend.
   async logout(req: Request, res: Response) {
-    try {
-      res.clearCookie('token');
-      res.json({ message: 'Logout realizado com sucesso' });
-    } catch (error) {
-      console.error('Erro no logout:', error);
-      res.status(500).json({ error: 'Erro ao realizar logout' });
+    res.status(200).json({ message: 'Logout handled by Firebase on frontend' });
+  }
+
+  // A rota validateToken não é mais necessária, a validação é feita pelo middleware authMiddleware
+  async validateToken(req: AuthRequest, res: Response) {
+    // O middleware authMiddleware já validou o token e populou req.user
+    if (!req.user) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
     }
+    res.json({ user: req.user });
   }
 
   async me(req: AuthRequest, res: Response) {
-    try {
-      if (!req.user) {
-        return res.status(401).json({ error: 'Usuário não autenticado' });
-      }
-
-      const token = req.cookies?.token || req.headers.authorization?.split(' ')[1];
-      if (!token) {
-        return res.status(401).json({ error: 'Token não fornecido' });
-      }
-
-      const user = await authService.validateToken(token);
-      res.json({ user });
-    } catch (error) {
-      console.error('Erro ao buscar usuário:', error);
-      res.status(500).json({ error: 'Erro ao buscar dados do usuário' });
+    // O middleware authMiddleware já validou o token e populou req.user
+    if (!req.user) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
     }
+    res.json({ user: req.user });
   }
 }
 
 export const authController = new AuthController();
+

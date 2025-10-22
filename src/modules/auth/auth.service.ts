@@ -1,12 +1,12 @@
 import prisma from '../../config/prisma';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt'; // Manter para hashing de senhas existentes se houver migração, ou remover se todas as senhas forem gerenciadas pelo Firebase
+// import jwt from 'jsonwebtoken'; // Remover se a autenticação for totalmente baseada em Firebase ID Token
 
 interface RegisterDTO {
   fullName: string;
   email: string;
   phone: string;
-  password: string;
+  password?: string; // Senha é opcional, pois o Firebase a gerencia
   cep: string;
   street: string;
   number: string;
@@ -26,16 +26,21 @@ interface RegisterDTO {
   businessTypeId?: string;
   businessDays: number[];
   plan: string;
+  firebaseUid: string; // Adiciona o UID do Firebase
 }
 
 interface LoginDTO {
-  email: string;
-  password: string;
+  idToken: string; // O token do Firebase é recebido aqui
 }
 
 export class AuthService {
   async register(dto: RegisterDTO) {
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    // A senha é gerenciada pelo Firebase, não precisamos fazer hash aqui.
+    // No entanto, se o campo passwordHash ainda existir no modelo User do Prisma,
+    // podemos armazenar um valor placeholder ou remover completamente o campo.
+    // Por enquanto, vamos usar um hash vazio ou remover o passwordHash do User model se não for mais necessário.
+    // Para simplificar, vou remover o hashing aqui e assumir que o Firebase gerencia a senha.
+    // const passwordHash = await bcrypt.hash(dto.password, 10);
     const normalizedEmail = dto.email.toLowerCase().trim();
 
     return prisma.$transaction(async (tx) => {
@@ -52,7 +57,8 @@ export class AuthService {
           fullName: dto.fullName,
           email: normalizedEmail,
           phone: dto.phone,
-          passwordHash,
+          // passwordHash: passwordHash, // Remover ou ajustar conforme o modelo User
+          firebaseUid: dto.firebaseUid, // Salva o UID do Firebase
           cep: dto.cep,
           street: dto.street,
           number: dto.number,
@@ -63,7 +69,7 @@ export class AuthService {
         }
       });
       
-      console.log('Usuário criado com sucesso:', { id: user.id, email: user.email });
+      console.log('Usuário criado com sucesso:', { id: user.id, email: user.email, firebaseUid: user.firebaseUid });
 
       const company = await tx.company.create({
         data: {
@@ -129,13 +135,9 @@ export class AuthService {
     });
   }
 
-  async login(dto: LoginDTO) {
-    const normalizedEmail = dto.email.toLowerCase().trim();
-    
-    console.log('Tentativa de login:', normalizedEmail);
-    
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+  async getUserByFirebaseUid(firebaseUid: string) {
+    return prisma.user.findUnique({
+      where: { firebaseUid: firebaseUid },
       include: {
         company: {
           include: {
@@ -144,77 +146,21 @@ export class AuthService {
         }
       }
     });
-
-    if (!user) {
-      console.log('Usuário não encontrado:', normalizedEmail);
-      throw new Error('Credenciais inválidas');
-    }
-
-    console.log('Usuário encontrado:', { id: user.id, email: user.email });
-    
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
-
-    if (!isPasswordValid) {
-      console.log('Senha inválida para o usuário:', normalizedEmail);
-      throw new Error('Credenciais inválidas');
-    }
-    
-    console.log('Login bem-sucedido:', normalizedEmail);
-
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role
-      },
-      jwtSecret,
-      { expiresIn: '7d' }
-    );
-
-    return {
-      token,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        company: user.company
-      }
-    };
   }
 
+  // A função login não é mais necessária, pois o Firebase lida com a autenticação de senha.
+  // O backend apenas precisa validar o idToken e buscar o usuário no banco de dados local.
+  async login(dto: LoginDTO) {
+    // Esta função não será mais chamada diretamente, mas mantida para evitar erros de compilação por enquanto.
+    // A lógica de login agora está no authController que usa getUserByFirebaseUid.
+    throw new Error('Função de login do serviço não deve ser chamada diretamente após integração Firebase.');
+  }
+
+  // validateToken e logout não são mais necessários aqui, pois o Firebase e o middleware lidam com isso.
   async validateToken(token: string) {
-    try {
-      const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-      const payload = jwt.verify(token, jwtSecret) as any;
-      
-      const user = await prisma.user.findUnique({
-        where: { id: payload.id },
-        include: {
-          company: {
-            include: {
-              businessType: true
-            }
-          }
-        }
-      });
-
-      if (!user) {
-        throw new Error('Usuário não encontrado');
-      }
-
-      return {
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        company: user.company
-      };
-    } catch (error) {
-      throw new Error('Token inválido');
-    }
+    throw new Error('validateToken do serviço não deve ser chamado diretamente após integração Firebase.');
   }
 }
 
 export const authService = new AuthService();
+
