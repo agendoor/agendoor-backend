@@ -19,8 +19,9 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: true,
-  credentials: true
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Adicionado PATCH para ser mais abrangente
+  credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Para receber dados do Twilio
