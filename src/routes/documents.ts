@@ -1,20 +1,30 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../config/prisma'; // Usar a instância global do Prisma
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import sharp from 'sharp';
+import { AuthRequest, authMiddleware } from '../middleware/auth'; // Importar AuthRequest e authMiddleware
 
 const router = Router();
-const prisma = new PrismaClient();
+
+// Aplicar authMiddleware a todas as rotas neste router
+router.use(authMiddleware);
 
 // Configurar multer para upload de arquivos
+const uploadDir = path.join(__dirname, '../../uploads/documents');
+const thumbnailDir = path.join(__dirname, '../../uploads/thumbnails');
+
+// Garante que os diretórios de upload existam
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+if (!fs.existsSync(thumbnailDir)) {
+  fs.mkdirSync(thumbnailDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/documents');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
@@ -30,7 +40,6 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Tipos de arquivo permitidos
     const allowedTypes = [
       'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
       'application/pdf',
@@ -40,16 +49,11 @@ const upload = multer({
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'text/plain'
     ];
-    if (file.mimetype !== 'image/png' && file.mimetype !== 'image/jpeg') {
-      console.error('Tipo de arquivo não permitido:', file.mimetype);
-      cb(null as any, false);
-      return;
-    }
 
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(null as any, false);
+      cb(new Error('Tipo de arquivo não permitido.'), false);
     }
   }
 });
@@ -60,18 +64,13 @@ const createThumbnail = async (filePath: string, originalName: string): Promise<
     const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(originalName);
     if (!isImage) return null;
 
-    const thumbnailDir = path.join(__dirname, '../../uploads/thumbnails');
-    if (!fs.existsSync(thumbnailDir)) {
-      fs.mkdirSync(thumbnailDir, { recursive: true });
-    }
-
     const thumbnailName = `thumb-${path.basename(filePath, path.extname(filePath))}.webp`;
-    const thumbnailPath = path.join(thumbnailDir, thumbnailName);
+    const thumbnailFullPath = path.join(thumbnailDir, thumbnailName);
 
     await sharp(filePath)
       .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
       .webp({ quality: 80 })
-      .toFile(thumbnailPath);
+      .toFile(thumbnailFullPath);
 
     return `/uploads/thumbnails/${thumbnailName}`;
   } catch (error) {
@@ -81,22 +80,23 @@ const createThumbnail = async (filePath: string, originalName: string): Promise<
 };
 
 // GET /api/clients/:clientId/documents - Listar documentos de um cliente
-router.get('/clients/:clientId/documents', async (req: Request, res: Response) => {
+router.get('/clients/:clientId/documents', async (req: AuthRequest, res: Response) => {
   try {
     const { clientId } = req.params;
     const { category, search } = req.query;
+    const companyId = req.user!.companyId; // Obter companyId do usuário autenticado
 
-    // Verificar se o cliente existe
-    const client = await prisma.client.findUnique({
-      where: { id: clientId }
+    // Verificar se o cliente pertence à empresa do usuário autenticado
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, companyId }
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     // Construir filtros
-    const where: any = { clientId };
+    const where: any = { clientId, companyId }; // Adicionar companyId ao filtro
     
     if (category && category !== 'all') {
       where.category = category as string;
@@ -104,9 +104,9 @@ router.get('/clients/:clientId/documents', async (req: Request, res: Response) =
     
     if (search) {
       where.OR = [
-        { name: { contains: search as string } },
-        { description: { contains: search as string } },
-        { originalName: { contains: search as string } }
+        { name: { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } },
+        { originalName: { contains: search as string, mode: 'insensitive' } }
       ];
     }
 
@@ -143,11 +143,12 @@ router.get('/clients/:clientId/documents', async (req: Request, res: Response) =
 });
 
 // POST /api/clients/:clientId/documents - Upload de documentos
-router.post('/clients/:clientId/documents', upload.array('files', 10), async (req: Request, res: Response) => {
+router.post('/clients/:clientId/documents', upload.array('files', 10), async (req: AuthRequest, res: Response) => {
   try {
     const { clientId } = req.params;
     const { category, description } = req.body;
     const files = req.files as Express.Multer.File[];
+    const companyId = req.user!.companyId; // Obter companyId do usuário autenticado
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'Nenhum arquivo foi enviado' });
@@ -157,13 +158,13 @@ router.post('/clients/:clientId/documents', upload.array('files', 10), async (re
       return res.status(400).json({ error: 'Categoria é obrigatória' });
     }
 
-    // Verificar se o cliente existe
-    const client = await prisma.client.findUnique({
-      where: { id: clientId }
+    // Verificar se o cliente pertence à empresa do usuário autenticado
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, companyId }
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     const uploadedDocuments = [];
@@ -177,6 +178,7 @@ router.post('/clients/:clientId/documents', upload.array('files', 10), async (re
         const document = await prisma.clientDocument.create({
           data: {
             clientId,
+            companyId, // Adicionar companyId ao criar o documento
             name: file.originalname.replace(/\.[^/.]+$/, ''), // Nome sem extensão
             originalName: file.originalname,
             type: file.mimetype,
@@ -239,17 +241,19 @@ router.post('/clients/:clientId/documents', upload.array('files', 10), async (re
 });
 
 // PUT /api/documents/:documentId - Atualizar documento
-router.put('/documents/:documentId', async (req: Request, res: Response) => {
+router.put('/documents/:documentId', async (req: AuthRequest, res: Response) => {
   try {
     const { documentId } = req.params;
     const { name, description, category, tags } = req.body;
+    const companyId = req.user!.companyId; // Obter companyId do usuário autenticado
 
-    const document = await prisma.clientDocument.findUnique({
-      where: { id: documentId }
+    // Verificar se o documento existe e pertence à empresa do usuário autenticado
+    const document = await prisma.clientDocument.findFirst({
+      where: { id: documentId, companyId }
     });
 
     if (!document) {
-      return res.status(404).json({ error: 'Documento não encontrado' });
+      return res.status(404).json({ error: 'Documento não encontrado ou não pertence à sua empresa' });
     }
 
     const updatedDocument = await prisma.clientDocument.update({
@@ -282,16 +286,18 @@ router.put('/documents/:documentId', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/documents/:documentId - Excluir documento
-router.delete('/documents/:documentId', async (req: Request, res: Response) => {
+router.delete('/documents/:documentId', async (req: AuthRequest, res: Response) => {
   try {
     const { documentId } = req.params;
+    const companyId = req.user!.companyId; // Obter companyId do usuário autenticado
 
-    const document = await prisma.clientDocument.findUnique({
-      where: { id: documentId }
+    // Verificar se o documento existe e pertence à empresa do usuário autenticado
+    const document = await prisma.clientDocument.findFirst({
+      where: { id: documentId, companyId }
     });
 
     if (!document) {
-      return res.status(404).json({ error: 'Documento não encontrado' });
+      return res.status(404).json({ error: 'Documento não encontrado ou não pertence à sua empresa' });
     }
 
     // Remover arquivos do sistema de arquivos
@@ -320,16 +326,18 @@ router.delete('/documents/:documentId', async (req: Request, res: Response) => {
 });
 
 // GET /api/documents/:documentId/download - Download de documento
-router.get('/documents/:documentId/download', async (req: Request, res: Response) => {
+router.get('/documents/:documentId/download', async (req: AuthRequest, res: Response) => {
   try {
     const { documentId } = req.params;
+    const companyId = req.user!.companyId; // Obter companyId do usuário autenticado
 
-    const document = await prisma.clientDocument.findUnique({
-      where: { id: documentId }
+    // Verificar se o documento existe e pertence à empresa do usuário autenticado
+    const document = await prisma.clientDocument.findFirst({
+      where: { id: documentId, companyId }
     });
 
     if (!document) {
-      return res.status(404).json({ error: 'Documento não encontrado' });
+      return res.status(404).json({ error: 'Documento não encontrado ou não pertence à sua empresa' });
     }
 
     if (!fs.existsSync(document.filePath)) {
@@ -345,3 +353,4 @@ router.get('/documents/:documentId/download', async (req: Request, res: Response
 });
 
 export default router;
+

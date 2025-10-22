@@ -1,8 +1,11 @@
 import { Router, Response } from 'express';
-import { AuthRequest } from '../middleware/auth';
-import prisma from '../prisma';
+import { AuthRequest, authMiddleware } from '../middleware/auth';
+import prisma from '../config/prisma';
 
 const router = Router();
+
+// Aplicar authMiddleware a todas as rotas neste router
+router.use(authMiddleware);
 
 // Validar dentes FDI (11-18, 21-28, 31-38, 41-48)
 const validFDITeeth = [
@@ -29,7 +32,7 @@ router.get('/clients/:clientId/notes', async (req: AuthRequest, res: Response) =
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     // Buscar notas
@@ -78,7 +81,7 @@ router.post('/clients/:clientId/notes', async (req: AuthRequest, res: Response) 
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     // Se houver meta com tooth, validar
@@ -96,7 +99,7 @@ router.post('/clients/:clientId/notes', async (req: AuthRequest, res: Response) 
       });
 
       if (!appointment) {
-        return res.status(404).json({ error: 'Agendamento não encontrado' });
+        return res.status(404).json({ error: 'Agendamento não encontrado ou não pertence à sua empresa' });
       }
     }
 
@@ -144,7 +147,7 @@ router.put('/clients/:clientId/notes/:noteId', async (req: AuthRequest, res: Res
     });
 
     if (!existingNote) {
-      return res.status(404).json({ error: 'Nota não encontrada' });
+      return res.status(404).json({ error: 'Nota não encontrada ou não pertence à sua empresa' });
     }
 
     // Se houver meta com tooth, validar
@@ -194,7 +197,7 @@ router.delete('/clients/:clientId/notes/:noteId', async (req: AuthRequest, res: 
     });
 
     if (!existingNote) {
-      return res.status(404).json({ error: 'Nota não encontrada' });
+      return res.status(404).json({ error: 'Nota não encontrada ou não pertence à sua empresa' });
     }
 
     // Deletar nota
@@ -221,7 +224,7 @@ router.get('/clients/:clientId/odontograma', async (req: AuthRequest, res: Respo
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     // Buscar todas as notas do tipo ODONTOGRAM_ENTRY
@@ -282,7 +285,7 @@ router.post('/appointments/:id/notes', async (req: AuthRequest, res: Response) =
     });
 
     if (!appointment) {
-      return res.status(404).json({ error: 'Agendamento não encontrado' });
+      return res.status(404).json({ error: 'Agendamento não encontrado ou não pertence à sua empresa' });
     }
 
     // Validações
@@ -341,7 +344,7 @@ router.get('/clients/:clientId/history', async (req: AuthRequest, res: Response)
     });
 
     if (!client) {
-      return res.status(404).json({ error: 'Cliente não encontrado' });
+      return res.status(404).json({ error: 'Cliente não encontrado ou não pertence à sua empresa' });
     }
 
     // Buscar notas clínicas
@@ -416,3 +419,4 @@ router.get('/clients/:clientId/history', async (req: AuthRequest, res: Response)
 });
 
 export default router;
+

@@ -2,19 +2,19 @@ import express = require("express");
 import { handleIncomingMessage, normalizePhoneNumber } from "../services/flowEngine";
 import { handleDynamicMessage } from "../services/dynamicFlow";
 import { sendWhatsAppMessage } from "../services/messageService";
+import { AuthRequest, authMiddleware } from "../../middleware/auth"; // Importar AuthRequest e authMiddleware
 
 const router = express.Router();
 
-/**
- * ✅ Rota pública para testar envio de mensagens via Twilio
- * Exemplo:
- * curl -X POST https://<sua-url>/api/whatsapp/send-whatsapp \
- *   -H "Content-Type: application/json" \
- *   -d '{"to":"+5517999999999","message":"Teste funcionando!"}'
- */
-router.post("/send-whatsapp", async (req, res) => {
+// A rota /send-whatsapp pode ser acessada por usuários autenticados para enviar mensagens
+router.post("/send-whatsapp", authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { to, message } = req.body;
+    const companyId = req.user?.companyId; // Obter companyId do usuário autenticado
+
+    if (!companyId) {
+      return res.status(401).json({ error: "companyId não encontrado no usuário autenticado." });
+    }
 
     if (!to || !message) {
       return res.status(400).json({ error: "Campos 'to' e 'message' são obrigatórios" });
@@ -24,6 +24,7 @@ router.post("/send-whatsapp", async (req, res) => {
     console.log("   Para:", to);
     console.log("   Mensagem:", message);
 
+    // TODO: Adicionar companyId ao sendWhatsAppMessage para registrar no contexto correto, se aplicável
     const sid = await sendWhatsAppMessage(to, message);
 
     if (!sid) {
@@ -44,6 +45,7 @@ router.post("/send-whatsapp", async (req, res) => {
 /**
  * ✅ Webhook: Recebe mensagens do Twilio
  * (usado para receber mensagens enviadas por clientes)
+ * Esta rota é pública, mas a lógica interna deve determinar a companyId
  */
 router.post("/webhook", async (req, res) => {
   try {
@@ -68,32 +70,7 @@ router.post("/webhook", async (req, res) => {
     console.log(`📞 De: ${phone} (Nome: ${name})`);
     console.log(`💬 Mensagem: "${message}"`);
 
-    // Usa o novo fluxo dinâmico com calendário inteligente
-    const response = await handleDynamicMessage(phone, message, name);
-    
-    console.log(`📤 Resposta gerada:`, JSON.stringify(response, null, 2));
-
-    if (response?.reply) {
-      const sid = await sendWhatsAppMessage(phone, response.reply, (response as any).buttons);
-      
-      if (sid) {
-        console.log(`✅ Mensagem enviada com sucesso | SID: ${sid}`);
-      } else {
-        console.error(`❌ Falha ao enviar mensagem para ${phone}`);
-      }
-    } else {
-      console.log(`ℹ️ Nenhuma resposta gerada para enviar`);
-    }
-
-    console.log("✅ ===== WEBHOOK PROCESSADO COM SUCESSO =====\n");
-    res.status(200).json({ success: true });
-  } catch (err: any) {
-    console.error("❌ ===== ERRO NO WEBHOOK =====");
-    console.error("Erro ao processar mensagem:", err);
-    console.error("Stack:", err.stack);
-    console.error("=====================================\n");
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-export default router;
+    // TODO: Implementar lógica para determinar companyId a partir do número de telefone ou outro identificador
+    // Por enquanto, o bot não tem companyId, o que pode ser um problema para segregação.
+    // Isso precisará de um ajuste mais profundo na lógica do bot para vincular o número de telefone
+    // a uma empresa específica, ou o bot precisará de um 
