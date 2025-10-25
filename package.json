@@ -4,12 +4,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "npx prisma generate && tsc -b",
-    "start": "node ./dist/index.js",
-    "postinstall": "npx prisma generate && npx prisma migrate deploy && npx prisma db seed",
-    "smoke": "node scripts/smoke.js",
-    "test:twilio": "ts-node src/testTwilio.ts",
-    "test:webhook": "curl -X POST http://localhost:3001/api/whatsapp/webhook -H 'Content-Type: application/x-www-form-urlencoded' -d 'From=whatsapp:+5517999999999&Body=Oi&ProfileName=Teste'"
+    "build": "tsc -b",
+    "start": "node ./dist/index.js"
   },
   "keywords": [
     "agendoor",
@@ -19,11 +15,7 @@
   "author": "",
   "license": "ISC",
   "description": "Backend para o sistema Agendoor",
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
-  },
   "dependencies": {
-    "@prisma/client": "^6.17.1",
     "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/cors": "^2.8.19",
@@ -38,6 +30,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "firebase-admin": "^13.5.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "nodemon": "^3.1.10",
@@ -45,8 +38,5 @@
     "ts-node": "^10.9.2",
     "twilio": "^5.10.3",
     "typescript": "^5.9.2"
-  },
-  "devDependencies": {
-    "prisma": "^6.17.1"
   }
 }
