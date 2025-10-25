@@ -4,8 +4,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc",
+    "build": "tsc && prisma generate",
     "start": "node dist/index.js",
+    "postinstall": "prisma migrate deploy && prisma db seed",
     "smoke": "node scripts/smoke.js",
     "test:twilio": "ts-node src/testTwilio.ts",
     "test:webhook": "curl -X POST http://localhost:3001/api/whatsapp/webhook -H 'Content-Type: application/x-www-form-urlencoded' -d 'From=whatsapp:+5517999999999&Body=Oi&ProfileName=Teste'"
